@@ -799,15 +799,6 @@ with tab4: # Heatmap, database, etc.
                     st.write(HMdf.style.applymap(neg_red))
         if proceed_with_display == 'No':
             st.write('Database has no record corresponding to this choice of paramaters: click \'Update database\'.')
-        
-
-##    conn = sqlite3.connect('options_price_db')
-##    c = conn.cursor()
-##    whole_thing = c.execute('SELECT * FROM HMpremium_table').fetchall()
-##    c.close()
-##    conn.close()
-##    df = pd.DataFrame(whole_thing)
-##    st.write(df)
     
 
     
