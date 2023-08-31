@@ -5,8 +5,6 @@ In Python, we employ Streamlit to create a sleek user interface allowing the use
 
 We also allow the user to compute/plot implied volatility, and spot vs premium contours of the Black-Scholes solution surface for chosen times to maturity. 
 
-A picture tells a thousand words...
-
 ![SegmentLocal](images/heatmap_tab.png)
 
 ![SegmentLocal](images/implied_volatility_tab.png)
