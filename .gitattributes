@@ -1,0 +1,14 @@
+# Normalise line endings to LF in the repository and in the working tree.
+#
+# Without this, Git on Windows checks files out with CRLF, ruff's formatter rewrites
+# them to LF, and every file shows as modified on a machine that changed nothing. The
+# formatter is pinned to LF in pyproject.toml as well, so Git, ruff, and the pre-commit
+# mixed-line-ending hook all want the same thing.
+#
+# After adding this file, run: git add --renormalize .
+* text=auto eol=lf
+
+*.png binary
+*.whl binary
+*.db binary
+*.sqlite3 binary

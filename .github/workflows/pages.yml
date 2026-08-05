@@ -1,0 +1,116 @@
+name: Publish document
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "src/**"
+      - "pyproject.toml"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -e ".[dev]"
+
+      # The wheel the page runs is the wheel built from this commit, and it is pure
+      # Python (py3-none-any) because the package has no compiled dependency. That is
+      # what lets micropip install it in the browser, and it is the reason SciPy was
+      # kept out of the runtime requirements.
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel --outdir docs/
+
+      - name: Check the wheel is pure Python
+        run: |
+          if ! ls docs/*-py3-none-any.whl >/dev/null 2>&1; then
+            echo "wheel is not py3-none-any; Pyodide cannot install it" >&2
+            ls -la docs/
+            exit 1
+          fi
+
+      # The version in the front matter names the wheel by filename, so a version bump
+      # that misses the .qmd would publish a page that cannot start. Fail here instead.
+      - name: Check the document names the built wheel
+        run: |
+          wheel=$(basename docs/*-py3-none-any.whl)
+          if ! grep -q "$wheel" docs/index.qmd; then
+            echo "docs/index.qmd does not reference $wheel" >&2
+            grep -n "whl" docs/index.qmd >&2 || true
+            exit 1
+          fi
+
+      - name: Generate static figures
+        run: python docs/make_figures.py
+
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.5.57
+
+      - name: Install quarto-live
+        run: quarto add r-wasm/quarto-live --no-prompt
+        working-directory: docs
+
+      - name: Render
+        run: quarto render
+        working-directory: docs
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: artifact
+      - name: Unpack the built site
+        run: mkdir -p _site && tar -xf artifact/artifact.tar -C _site
+      - name: Install Playwright
+        run: |
+          pip install playwright pytest
+          playwright install --with-deps chromium
+      # Serves the built site and drives a real browser through it. This is the only
+      # test that exercises the thing a reader actually meets: the runtime booting, the
+      # wheel installing, and a cell producing the right number.
+      - name: Smoke test the published page
+        run: pytest tests/e2e/test_document.py -v
+        env:
+          BSM_SITE_DIR: _site
+
+  deploy:
+    needs: smoke
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
