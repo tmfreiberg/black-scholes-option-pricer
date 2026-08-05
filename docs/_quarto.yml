@@ -7,6 +7,7 @@ project:
 website:
   title: "bsm-pricer"
   repo-url: https://github.com/tmfreiberg/black-scholes-option-pricer
+  repo-subdir: docs
   repo-actions: [source, issue]
   page-footer: "MIT licensed. Built from the repository on every push to main."
 
