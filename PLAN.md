@@ -59,7 +59,7 @@ src/bsm/
    Black-Scholes prices — invert through the Black-Scholes solver, and observe the
    smile. This demonstrates the mechanism by which a smile arises, with ground truth
    known because it was generated here. It does not claim that real markets exhibit
-   one; the text cites the empirical literature for that.
+   one; the text cites the empirical literature for that. *Complete.*
 
 ## Testing strategy
 

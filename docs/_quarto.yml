@@ -1,10 +1,7 @@
 project:
   type: website
   output-dir: _site
-  # The wheel is built into docs/ by CI before rendering. It has to be copied into the
-  # site so that micropip can fetch it at the relative path the front matter names.
   resources:
-    - "*.whl"
     - "figures/**"
 
 website:

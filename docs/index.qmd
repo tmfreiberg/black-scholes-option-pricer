@@ -7,31 +7,34 @@ format:
     toc-depth: 2
     theme: cosmo
     css: styles.css
-engine: knitr
-pyodide:
-  packages:
-    - numpy
-    - ./bsm_pricer-0.1.0-py3-none-any.whl
+engine: markdown
 ---
 
 ```{pyodide}
-#| edit: false
-#| echo: false
-#| output: false
 #| autorun: true
+#| edit: false
+#| caption: "Install the package into the browser runtime"
+import micropip
+await micropip.install("bsm-pricer==0.1.0")
+
 from bsm import (
     Contract, Market, OptionKind,
     price, greeks, implied_volatility, price_surface,
     call_price, put_price, price_bounds,
+    JumpParameters, jump_price, volatility_smile,
 )
 import numpy as np
 ```
 
 ::: {.callout-note appearance="simple"}
-Every code cell on this page is live. It runs the `bsm` package in your browser through
-Pyodide — nothing is sent anywhere, and nothing was precomputed. Edit a number and press
-run. The runtime takes a few seconds to load the first time; the figures below are static
-and readable immediately.
+Every code cell on this page is live. The cell above installs `bsm-pricer` from PyPI into
+a Python runtime running in your browser; everything below then runs against it. Nothing
+is sent anywhere and nothing was precomputed. Edit a number and press run.
+
+The runtime takes several seconds to load the first time, so the figures and prose are
+static and readable immediately. The install is shown rather than hidden deliberately: a
+failure there is the only thing that can break the rest of the page, and it should be
+visible when it happens rather than surfacing as a puzzling error further down.
 :::
 
 ## What the model says
@@ -286,9 +289,109 @@ used as a quotation convention while its central assumption is being priced agai
 
 That is not a defect in the arithmetic. It is the model being informative about its own
 limits — the formula is exact given its assumptions, and the smile is the market saying
-which assumption is wrong. Working out how a smile arises, by pricing under a model with
-jumps and then inverting through Black-Scholes, is the subject of the next section of this
-document.
+which assumption is wrong.
+
+## Manufacturing a smile
+
+The claim can be tested rather than asserted, and the way to test it is to build a world
+where the answer is known in advance.
+
+Merton's 1976 extension keeps everything about Black-Scholes except continuity. Alongside
+the diffusion, jumps arrive as a Poisson process with intensity $\lambda$, and each
+multiplies the price by a lognormal factor. The model still has a closed form, and the
+form is the useful part: conditional on exactly $n$ jumps, the terminal distribution is
+lognormal again — wider, and differently centred — so the price given $n$ is a
+Black-Scholes price. The unconditional price is a Poisson-weighted average of them:
+
+$$
+C = \sum_{n=0}^{\infty}
+    \frac{e^{-\lambda'\tau}(\lambda'\tau)^n}{n!}\,
+    C_{\mathrm{BS}}(S, K, r_n, q, \tau, \sigma_n),
+$$
+
+with $\sigma_n^2 = \sigma^2 + n\delta^2/\tau$ and a drift $r_n$ carrying a compensator
+that cancels the average jump, so the discounted price stays a martingale.
+
+Returns under this model are not lognormal — a mixture of lognormals is not one — so it is
+exactly the situation the previous section described, except that here we know the truth
+because we generated it.
+
+```{pyodide}
+#| caption: "Price with jumps, then read it back through Black-Scholes"
+jumps = JumpParameters(intensity=1.0, mean=-0.10, volatility=0.15)
+
+generated = jump_price(OptionKind.CALL, 100.0, 100.0, 0.05, 0.0, 1.0, 0.20, jumps)
+implied = implied_volatility(
+    generated, OptionKind.CALL, 100.0, 100.0, 0.05, 0.0, 1.0
+)
+round(generated, 4), round(implied, 4)
+```
+
+The price was produced with a diffusion volatility of 0.20, and Black-Scholes reads it
+back as something higher. That much is unsurprising: the jumps add variance, and the only
+place the inverting model can put it is $\sigma$.
+
+The interesting part is what happens across strikes.
+
+```{pyodide}
+#| caption: "The smile, one strike at a time"
+strikes = np.array([80.0, 90.0, 100.0, 110.0, 120.0])
+
+np.round(100 * volatility_smile(
+    strikes, spot=100.0, rate=0.05, dividend_yield=0.0,
+    maturity=1.0, volatility=0.20, jumps=jumps,
+), 2)
+```
+
+Not constant. One underlying, one expiry, one generating process — and five different
+implied volatilities, falling as the strike rises. That is a skew, and nothing about it is
+noise or numerical error: the prices are exact to the last few digits and the inversions
+round-trip.
+
+![Implied volatility against strike for prices generated three ways. The flat line is the control: with no jumps the generating model *is* Black-Scholes, and the inversion returns the input exactly.](figures/smile.png){#fig-smile}
+
+@fig-smile is the argument in one picture, and the flat line is the part that makes it an
+argument rather than an anecdote. Without the control, a curved line would prove nothing —
+it could be a bug in the solver, or in the pricer, or in the plot. With it, the same
+pipeline that returns a constant 20% when the assumption holds returns a curve when it
+does not.
+
+The two curved lines differ in a way that is worth reading. Symmetric jumps — as likely up
+as down — produce a genuine smile, turning up at both ends and lowest near the money.
+Downward-biased jumps tilt it into a monotone skew: the left side rises and the right side
+falls, because the extra probability mass has been put on one side of the distribution
+only. The shape encodes *which* way the generating distribution departs from lognormal,
+not merely that it does.
+
+```{pyodide}
+#| caption: "Change the jumps, change the shape"
+symmetric = JumpParameters(intensity=1.0, mean=0.0, volatility=0.20)
+
+np.round(100 * volatility_smile(
+    strikes, spot=100.0, rate=0.05, dividend_yield=0.0,
+    maturity=1.0, volatility=0.20, jumps=symmetric,
+), 2)
+```
+
+Set `mean=0.0` and the curve becomes roughly symmetric about the money. Push it negative
+and the left side lifts. Set `intensity=0.0` and it flattens to exactly 20% everywhere,
+because at that point the generating model and the inverting model are the same model.
+
+### What this does and does not establish
+
+It establishes a mechanism. If prices are generated by a process whose returns are not
+lognormal, and you invert them through a model that assumes they are, implied volatility
+varies with strike, and the pattern of variation reflects the shape of the real
+distribution. That is a statement about the inversion, and it is demonstrated here rather
+than argued.
+
+It does not establish that jumps are why equity index options exhibit a skew. Stochastic
+volatility produces a similar shape by a different route, and so do several other
+departures from the assumptions; distinguishing between them is an empirical question this
+page does not touch, and answering it would require market data rather than a generated
+example. The honest conclusion is narrower and still worth having: a smile is what a wrong
+distributional assumption looks like from the inside, and Black-Scholes is precise enough
+about its assumptions to make its own failure legible.
 
 ## Colophon
 

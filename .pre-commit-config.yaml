@@ -18,12 +18,15 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-# mypy runs from the project environment rather than an isolated one. Two reasons.
+  # mypy runs from the project environment rather than an isolated one. Two reasons.
   # The isolated form needs every third-party import restated as an
   # additional_dependencies entry, which is a second dependency list that silently
-  # drifts from pyproject.toml — it already had, missing typer and rich. And mypy is
-  # only meaningful over the whole project, since types cross module boundaries;
-  # handing it a changed subset gives different answers than `mypy src tests`.
+  # drifts from pyproject.toml. And mypy is only meaningful over the whole project,
+  # since types cross module boundaries; handing it a changed subset gives different
+  # answers than `mypy src tests`.
+  #
+  # --no-incremental because the cache has twice produced a wall of phantom errors
+  # after a numpy or mypy version change. Fifteen seconds, deterministic.
   - repo: local
     hooks:
       - id: mypy
@@ -32,4 +35,4 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        args: [src, tests]
+        args: [--no-incremental, src, tests]

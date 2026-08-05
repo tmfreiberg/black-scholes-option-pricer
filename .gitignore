@@ -20,3 +20,6 @@ docs/_site/
 docs/.quarto/
 docs/_extensions/
 docs/*.whl
+
+/.quarto/
+**/*.quarto_ipynb

@@ -195,25 +195,61 @@ wheel is `py3-none-any` and the runtime is small enough to load in a few seconds
 narrative figures are rendered ahead of time by `docs/make_figures.py`, so the page is
 readable before the runtime finishes starting.
 
-The publish workflow refuses to deploy a page that would not work: it checks the wheel is
-pure Python, checks the document names the wheel that was actually built, and then drives
-a real Chromium through the rendered site to confirm the runtime boots and a live cell
-produces the textbook price. A rendered page can look perfect and be entirely inert.
+The install is the document's first cell — visible Python rather than a configuration
+key — because a failure there breaks every cell below it, and it should say so where it
+happens. It pins an exact version, so the page runs a known release rather than whatever
+is newest.
 
-## Roadmap
+The publish workflow refuses to deploy a page that would not work. It checks the pinned
+version matches this repository, checks that version is actually on PyPI, checks the
+wheel is pure Python, and then drives a real Chromium through the rendered site to
+confirm the runtime boots and a live cell produces the textbook price. A rendered page
+can look perfect and be entirely inert.
 
-Implemented: value objects, day count, normal distribution, forward, `d1`/`d2`, call
-and put prices, the five Greeks, no-arbitrage bounds and put-call parity, Brent's
-method, implied volatility, vectorised surfaces, a SQLite scenario log, a command-line
-interface, and the published document.
+## The smile
 
-Planned: pricing under Merton jump-diffusion, and inverting those prices through
-Black-Scholes to exhibit a volatility smile.
+The last section of the document is the one that makes the rest mean something.
+
+Implied volatility is defined by inverting Black-Scholes at a quoted price, so if the
+model were correct, every option on one underlying at one expiry would imply the same
+sigma. `bsm.merton` shows what happens when it isn't: prices are generated under Merton
+jump-diffusion, whose returns are not lognormal, and then read back through
+Black-Scholes. The implied volatilities are not constant, and the shape of the variation
+encodes *which* way the generating distribution departs from lognormal — symmetric jumps
+give a smile, downward-biased jumps a monotone skew.
+
+The ground truth is known because we generated it, which is what makes this a
+demonstration rather than an anecdote. The control matters most: with zero jump
+intensity the generating model *is* Black-Scholes and the same pipeline returns exactly
+0.20 at every strike, so a curve elsewhere cannot be a bug in the solver.
+
+What it does not establish is that jumps are why equity index options exhibit a skew.
+Stochastic volatility produces a similar shape by another route, and separating them is
+an empirical question needing market data. The claim is about the inversion, not about
+markets.
 
 ## Assistance
 
 This package was written with LLM assistance. The direction, the review, and the
 responsibility for what is published are mine.
+
+## Releasing
+
+`bsm-pricer` is published to PyPI, which is how the document obtains it. Tagging triggers
+the release workflow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow runs the full gate before uploading — a bad release can be yanked but not
+replaced — checks the tag matches `bsm.__version__`, and publishes through PyPI trusted
+publishing, so no API token is stored here.
+
+Bumping the version means editing three things together: `pyproject.toml`,
+`src/bsm/__init__.py`, and the pin in `docs/index.qmd`. The publish workflow fails if the
+last one is forgotten.
 
 ## Licence
 

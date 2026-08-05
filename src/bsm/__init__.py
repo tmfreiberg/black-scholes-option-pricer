@@ -32,6 +32,7 @@ from bsm.implied import (
     implied_volatility,
     implied_volatility_for,
 )
+from bsm.merton import JumpParameters, jump_price, volatility_smile
 from bsm.normal import cdf, pdf
 from bsm.pricing import call_price, d1_d2, forward_price, price, put_price
 from bsm.roots import brentq
@@ -46,6 +47,7 @@ __all__ = [
     "Greeks",
     "Grid",
     "ImpliedVolatilityError",
+    "JumpParameters",
     "Market",
     "OptionKind",
     "Scenario",
@@ -63,6 +65,7 @@ __all__ = [
     "greeks",
     "implied_volatility",
     "implied_volatility_for",
+    "jump_price",
     "parity_residual",
     "pdf",
     "price",
@@ -73,5 +76,6 @@ __all__ = [
     "tenor_to_years",
     "theta",
     "vega",
+    "volatility_smile",
     "year_fraction",
 ]

@@ -6,9 +6,10 @@ it gates that deploy.
 
 What it checks is the one thing nothing else can: that a reader arriving at the page
 gets a working runtime. Everything upstream verifies that the Python is correct; this
-verifies that the Python reaches the browser at all — the wheel resolves, Pyodide boots,
-micropip installs the package, and a live cell produces the expected number. A rendered
-page can look perfect and be completely inert.
+verifies that the Python reaches the browser at all — Pyodide boots, micropip resolves
+the package from PyPI, and a live cell produces the expected number. A rendered page can
+look perfect and be completely inert, and the failure that taught us this was silent: a
+package that never installed surfaced three cells later as an undefined name.
 """
 
 from __future__ import annotations
@@ -81,11 +82,11 @@ class TestStaticContent:
         )
         assert broken == 0
 
-    def test_wheel_is_reachable(self, page: object) -> None:
-        response = page.request.get(  # type: ignore[attr-defined]
-            page.url + "bsm_pricer-0.1.0-py3-none-any.whl"  # type: ignore[attr-defined]
-        )
-        assert response.status == 200
+    def test_the_install_cell_is_visible(self, page: object) -> None:
+        """The install is shown, not hidden, so that its failure is visible too."""
+        content = page.content()  # type: ignore[attr-defined]
+        assert "micropip.install" in content
+        assert "bsm-pricer==" in content
 
 
 class TestLiveRuntime:
@@ -100,6 +101,16 @@ class TestLiveRuntime:
 
         text = output.inner_text()
         assert "10.45" in text, f"expected the textbook price, got: {text!r}"
+
+    def test_the_smile_cell_runs(self, page: object) -> None:
+        """The deepest path on the page: merton, through implied, through roots."""
+        buttons = page.locator("button:has-text('Run')")  # type: ignore[attr-defined]
+        buttons.first.wait_for(state="visible", timeout=RUNTIME_TIMEOUT_MS)
+        buttons.last.click()
+
+        output = page.locator(".qwebr-output-code-area").last  # type: ignore[attr-defined]
+        output.wait_for(timeout=RUNTIME_TIMEOUT_MS)
+        assert output.inner_text().strip() != ""
 
     def test_no_console_errors(self, site_url: str) -> None:
         """A failed micropip install surfaces here and nowhere else on the page."""
@@ -119,5 +130,9 @@ class TestLiveRuntime:
             context.wait_for_timeout(15_000)
             browser.close()
 
-        fatal = [error for error in errors if "micropip" in error or "404" in error]
+        fatal = [
+            error
+            for error in errors
+            if "micropip" in error or "404" in error or "ModuleNotFoundError" in error
+        ]
         assert not fatal, f"console errors: {fatal}"

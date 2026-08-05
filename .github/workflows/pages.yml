@@ -32,31 +32,42 @@ jobs:
 
       - run: pip install -e ".[dev]"
 
-      # The wheel the page runs is the wheel built from this commit, and it is pure
-      # Python (py3-none-any) because the package has no compiled dependency. That is
-      # what lets micropip install it in the browser, and it is the reason SciPy was
-      # kept out of the runtime requirements.
-      - name: Build wheel
+      # The document installs a pinned version of bsm-pricer from PyPI at runtime, so
+      # two things have to agree that nothing here enforces on its own: the pin must
+      # match the version in this repository, and that version must actually be
+      # published. Either mismatch produces a page that renders perfectly and then
+      # fails on its first cell, which is the failure mode hardest to notice.
+      - name: Check the document pins this repository's version
         run: |
-          pip install build
-          python -m build --wheel --outdir docs/
+          version=$(python -c "import bsm; print(bsm.__version__)")
+          if ! grep -q "bsm-pricer==${version}\"" docs/index.qmd; then
+            echo "docs/index.qmd does not pin bsm-pricer==${version}" >&2
+            grep -n "micropip.install" docs/index.qmd >&2 || true
+            exit 1
+          fi
+          echo "pinned to ${version}"
 
-      - name: Check the wheel is pure Python
+      - name: Check that version is published on PyPI
         run: |
-          if ! ls docs/*-py3-none-any.whl >/dev/null 2>&1; then
-            echo "wheel is not py3-none-any; Pyodide cannot install it" >&2
-            ls -la docs/
+          version=$(python -c "import bsm; print(bsm.__version__)")
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://pypi.org/pypi/bsm-pricer/${version}/json")
+          if [ "$status" != "200" ]; then
+            echo "bsm-pricer ${version} is not on PyPI (HTTP ${status})" >&2
+            echo "publish it before deploying, or the page cannot start" >&2
             exit 1
           fi
 
-      # The version in the front matter names the wheel by filename, so a version bump
-      # that misses the .qmd would publish a page that cannot start. Fail here instead.
-      - name: Check the document names the built wheel
+      # Pure Python is what makes the package installable under Pyodide at all, and it
+      # is only pure because the runtime dependencies stop at NumPy. Checked here so a
+      # future dependency with compiled code fails the build rather than the browser.
+      - name: Check the wheel is pure Python
         run: |
-          wheel=$(basename docs/*-py3-none-any.whl)
-          if ! grep -q "$wheel" docs/index.qmd; then
-            echo "docs/index.qmd does not reference $wheel" >&2
-            grep -n "whl" docs/index.qmd >&2 || true
+          pip install build
+          python -m build --wheel --outdir dist/
+          if ! ls dist/*-py3-none-any.whl >/dev/null 2>&1; then
+            echo "wheel is not py3-none-any; Pyodide cannot install it" >&2
+            ls -la dist/
             exit 1
           fi
 
@@ -97,9 +108,9 @@ jobs:
         run: |
           pip install playwright pytest
           playwright install --with-deps chromium
-      # Serves the built site and drives a real browser through it. This is the only
-      # test that exercises the thing a reader actually meets: the runtime booting, the
-      # wheel installing, and a cell producing the right number.
+      # Serves the built site and drives a real browser through it. The only test that
+      # exercises what a reader meets: the runtime booting, micropip resolving the
+      # package from PyPI, and a cell producing the right number.
       - name: Smoke test the published page
         run: pytest tests/e2e/test_document.py -v
         env:

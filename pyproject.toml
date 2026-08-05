@@ -58,12 +58,6 @@ line-length = 88
 target-version = "py311"
 src = ["src", "tests"]
 
-# Pin the formatter to LF so it cannot disagree with .gitattributes. Without this the
-# formatter follows the file it reads, which on Windows means CRLF in, CRLF out, and a
-# permanent diff against a repository normalised to LF.
-[tool.ruff.format]
-line-ending = "lf"
-
 [tool.ruff.lint]
 select = [
     "E", "W",  # pycodestyle

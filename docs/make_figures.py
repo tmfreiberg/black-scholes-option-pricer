@@ -24,6 +24,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from bsm.grids import price_surface  # noqa: E402
+from bsm.merton import JumpParameters, volatility_smile  # noqa: E402
 from bsm.plot import heatmap, price_curves  # noqa: E402
 from bsm.types import OptionKind  # noqa: E402
 
@@ -66,11 +67,39 @@ def build_heatmap() -> None:
     plt.close(figure)
 
 
+def build_smile() -> None:
+    """Implied volatility against strike, for prices generated with jumps."""
+    strikes = np.linspace(70.0, 130.0, 61)
+    shared = dict(
+        spot=100.0, rate=0.05, dividend_yield=0.0, maturity=1.0, volatility=0.20
+    )
+
+    figure, ax = plt.subplots(figsize=(8.0, 5.0))
+    for label, jumps in (
+        ("no jumps", JumpParameters(0.0, 0.0, 0.0)),
+        ("symmetric jumps", JumpParameters(1.0, 0.0, 0.20)),
+        ("downward jumps", JumpParameters(1.0, -0.10, 0.15)),
+    ):
+        smile = volatility_smile(strikes, jumps=jumps, **shared)  # type: ignore[arg-type]
+        ax.plot(strikes, 100.0 * smile, label=label)
+
+    ax.axvline(100.0, color="grey", linewidth=0.8, linestyle="--", zorder=0)
+    ax.axhline(20.0, color="grey", linewidth=0.8, linestyle=":", zorder=0)
+    ax.set_xlabel("strike")
+    ax.set_ylabel("Black-Scholes implied volatility (%)")
+    ax.set_title("A smile is what a wrong distribution looks like from inside")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    figure.savefig(FIGURES / "smile.png", dpi=DPI, bbox_inches="tight")
+    plt.close(figure)
+
+
 def main() -> None:
     """Write every figure the document embeds."""
     FIGURES.mkdir(parents=True, exist_ok=True)
     build_curves()
     build_heatmap()
+    build_smile()
     print(f"wrote figures to {FIGURES}")
 
 
