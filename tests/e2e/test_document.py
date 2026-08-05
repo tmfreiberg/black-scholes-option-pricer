@@ -9,6 +9,13 @@ verifies that the Python reaches the browser at all. It is a regression guard ra
 than a proof that any particular build works: a Quarto or quarto-live upgrade can leave
 the render succeeding and the page inert, and nothing else in the suite would notice.
 
+Before running
+--------------
+Run `quarto render` first. A stale `docs/_site` fails these tests in ways that read as
+selector problems: a page rendered before the switch to PyPI still carried a localhost
+wheel URL, so the install failed, so no cell could run, and three tests failed for what
+looked like three unrelated reasons.
+
 Selectors
 ---------
 The class names below were read off a rendered page rather than inferred, and they are
