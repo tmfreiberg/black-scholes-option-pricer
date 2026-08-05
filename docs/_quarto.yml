@@ -1,0 +1,18 @@
+project:
+  type: website
+  output-dir: _site
+  resources:
+    - "figures/**"
+
+website:
+  title: "bsm-pricer"
+  repo-url: https://github.com/tmfreiberg/black-scholes-option-pricer
+  repo-actions: [source, issue]
+  page-footer: "MIT licensed. Built from the repository on every push to main."
+
+format:
+  live-html:
+    toc: true
+    code-copy: true
+    code-overflow: wrap
+    highlight-style: github

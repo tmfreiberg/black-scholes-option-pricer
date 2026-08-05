@@ -1,0 +1,61 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -e ".[dev]"
+
+      # Never publish something that does not pass its own gate. A bad release cannot
+      # be replaced on PyPI, only yanked, so the checks belong before the upload rather
+      # than after it.
+      - name: Verify
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy src tests
+          pytest --cov --cov-fail-under=95
+
+      - name: Check the tag matches the package version
+        run: |
+          version=$(python -c "import bsm; print(bsm.__version__)")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "tag ${tag} does not match bsm.__version__ ${version}" >&2
+            exit 1
+          fi
+
+      - run: pip install build
+      - run: python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/bsm-pricer
+    # Trusted publishing: PyPI verifies this workflow's identity directly, so no API
+    # token is stored in the repository at all.
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distribution
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

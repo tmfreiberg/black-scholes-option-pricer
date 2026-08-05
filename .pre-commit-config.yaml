@@ -1,0 +1,38 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # mypy runs from the project environment rather than an isolated one. Two reasons.
+  # The isolated form needs every third-party import restated as an
+  # additional_dependencies entry, which is a second dependency list that silently
+  # drifts from pyproject.toml. And mypy is only meaningful over the whole project,
+  # since types cross module boundaries; handing it a changed subset gives different
+  # answers than `mypy src tests`.
+  #
+  # --no-incremental because the cache has twice produced a wall of phantom errors
+  # after a numpy or mypy version change. Fifteen seconds, deterministic.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+        args: [--no-incremental, src, tests]

@@ -1,0 +1,18 @@
+/* Live cells are the point of the page, so they should read as interactive rather
+   than as ordinary code listings. */
+.exercise-cell {
+  border-left: 3px solid #2c6e9b;
+  padding-left: 0.75rem;
+}
+
+/* The Pyodide runtime takes a few seconds on a cold visit. Make the waiting state
+   legible rather than leaving the reader looking at an inert button. */
+.qwebr-status-text {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+figure figcaption {
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
