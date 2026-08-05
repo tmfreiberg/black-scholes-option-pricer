@@ -1,13 +1,28 @@
 # bsm-pricer
 
+[![PyPI](https://img.shields.io/pypi/v/bsm-pricer)](https://pypi.org/project/bsm-pricer/)
+[![CI](https://github.com/tmfreiberg/black-scholes-option-pricer/actions/workflows/ci.yml/badge.svg)](https://github.com/tmfreiberg/black-scholes-option-pricer/actions/workflows/ci.yml)
+[![Document](https://img.shields.io/badge/document-live-blue)](https://tmfreiberg.github.io/black-scholes-option-pricer/)
+
 European option pricing under Black-Scholes-Merton: prices, Greeks, implied
 volatility, and sensitivity surfaces, as a typed and tested Python package.
 
 ## Install
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+pip install bsm-pricer
+```
+
+Optional extras: `bsm-pricer[plot]` for the matplotlib helpers, `bsm-pricer[cli]` for the
+`bsm` command, or `bsm-pricer[plot,cli]` for both.
+
+To work on the package itself:
+
+```bash
+python -m venv .venv --prompt bsm
+source .venv/bin/activate          # .venv\Scripts\activate on Windows
 pip install -e ".[dev]"
+pre-commit install
 ```
 
 NumPy is the only runtime dependency. The standard normal CDF and the root-finder are
