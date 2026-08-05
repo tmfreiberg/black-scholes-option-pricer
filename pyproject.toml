@@ -58,6 +58,9 @@ line-length = 88
 target-version = "py311"
 src = ["src", "tests"]
 
+[tool.ruff.format]
+line-ending = "lf"
+
 [tool.ruff.lint]
 select = [
     "E", "W",  # pycodestyle
