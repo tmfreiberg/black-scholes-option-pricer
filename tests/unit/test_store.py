@@ -8,6 +8,7 @@ declared and ignored.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -28,8 +29,17 @@ def make_grid(kind: OptionKind = OptionKind.CALL) -> Grid:
 
 
 @pytest.fixture
-def store() -> ScenarioStore:
-    return ScenarioStore(":memory:")
+def store() -> Iterator[ScenarioStore]:
+    """An ephemeral store, closed on teardown.
+
+    The close is not tidiness. A connection left to the garbage collector emits
+    `ResourceWarning` on Python 3.13, which `filterwarnings = ["error"]` turns into a
+    failure — attributed to whichever test happened to be running when collection
+    fired, rather than to the one that leaked. Python 3.12 does not warn, so this was
+    invisible until the CI matrix ran 3.13.
+    """
+    with ScenarioStore(":memory:") as scenario_store:
+        yield scenario_store
 
 
 class TestFingerprint:

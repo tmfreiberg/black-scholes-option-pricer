@@ -47,17 +47,6 @@ jobs:
           fi
           echo "pinned to ${version}"
 
-      - name: Check that version is published on PyPI
-        run: |
-          version=$(python -c "import bsm; print(bsm.__version__)")
-          status=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://pypi.org/pypi/bsm-pricer/${version}/json")
-          if [ "$status" != "200" ]; then
-            echo "bsm-pricer ${version} is not on PyPI (HTTP ${status})" >&2
-            echo "publish it before deploying, or the page cannot start" >&2
-            exit 1
-          fi
-
       # Pure Python is what makes the package installable under Pyodide at all, and it
       # is only pure because the runtime dependencies stop at NumPy. Checked here so a
       # future dependency with compiled code fails the build rather than the browser.
@@ -85,6 +74,21 @@ jobs:
       - name: Render
         run: quarto render
         working-directory: docs
+
+      # Deliberately after the render, not before. The render is the step most likely
+      # to break and the one hardest to check anywhere else, so it should run even when
+      # the version is not yet published — otherwise a broken document stays hidden
+      # through the whole window between bumping a version and releasing it.
+      - name: Check that version is published on PyPI
+        run: |
+          version=$(python -c "import bsm; print(bsm.__version__)")
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://pypi.org/pypi/bsm-pricer/${version}/json")
+          if [ "$status" != "200" ]; then
+            echo "bsm-pricer ${version} is not on PyPI (HTTP ${status})" >&2
+            echo "publish it before deploying, or the page cannot start" >&2
+            exit 1
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:
