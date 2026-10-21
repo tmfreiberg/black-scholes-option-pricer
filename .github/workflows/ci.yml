@@ -1,10 +1,18 @@
 name: CI
 
+# The check every change has to pass before it reaches main: lint and types, the
+# tests on every supported Python, the package as PyPI would receive it, and the
+# page as a reader would meet it. Everything installs from uv.lock, so a run here
+# uses exactly the versions a local `uv sync --locked` gives.
+
 on:
   push:
-    branches: [main, update]
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,24 +20,23 @@ concurrency:
 
 jobs:
   # Lint and type-check run once, as their own job, so that a failure here is
-  # unambiguous rather than buried in one cell of the test matrix. Both gate every
-  # push; neither is advisory.
+  # unambiguous rather than buried in one cell of the test matrix.
   static:
     name: Lint and type-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -e ".[dev]"
+          enable-cache: true
+      # Python comes from .python-version.
+      - run: uv sync --locked --extra dev
       - name: ruff check
-        run: ruff check --output-format=github .
+        run: uv run --no-sync ruff check --output-format=github .
       - name: ruff format
-        run: ruff format --check .
+        run: uv run --no-sync ruff format --check .
       - name: mypy
-        run: mypy src tests
+        run: uv run --no-sync mypy src tests
 
   test:
     name: Tests (Python ${{ matrix.python-version }})
@@ -37,33 +44,105 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        # 3.14 is tested ahead of being declared in the classifiers.
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
-          cache: pip
-      - run: pip install -e ".[dev]"
+      - run: uv sync --locked --extra dev
       # Doctests are collected here too, so every example in every docstring is
-      # executed on all three supported versions.
+      # executed on every Python in the matrix.
       - name: pytest
-        run: pytest --cov --cov-report=term-missing --cov-fail-under=95
+        run: uv run --no-sync pytest --cov --cov-report=term-missing --cov-fail-under=95
 
-  build:
-    name: Build wheel
+  package:
+    name: Wheel and sdist
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv build
+      - name: twine check
+        run: uvx twine check --strict dist/*
+      # Pure Python is what makes the package installable under Pyodide at all, and
+      # it is only pure because the runtime dependencies stop at NumPy. Checked here
+      # so a dependency with compiled code fails a pull request, not the browser.
+      - name: Check the wheel is pure Python
+        run: |
+          if ! ls dist/*-py3-none-any.whl >/dev/null 2>&1; then
+            echo "::error::wheel is not py3-none-any; Pyodide cannot install it"
+            ls -la dist/
+            exit 1
+          fi
+      # The sdist is built from the working tree, not from git, so list it: what
+      # lands in it is whatever .gitignore lets through.
+      - name: List the sdist
+        run: tar -tzf dist/*.tar.gz
+      - name: Install the wheel alone and import it
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/v"
+          uv pip install --python "$RUNNER_TEMP/v" dist/*.whl
+          "$RUNNER_TEMP/v/bin/python" -c "import bsm; print('bsm', bsm.__version__)"
+
+  page:
+    name: Render and smoke-test the page
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.12"
-      - run: pip install build
-      - run: python -m build
-      # The wheel is pure Python (py3-none-any), which is what lets micropip install it
-      # in the browser for the published document. Uploading it here means the Pages
-      # workflow can consume the same artifact the tests ran against.
-      - uses: actions/upload-artifact@v4
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - uses: ./.github/actions/render-page
+
+      # The page installs the pinned release from PyPI, so it can only run once that
+      # release exists. On the pull request that bumps the version, before the tag
+      # is pushed, the smoke test is skipped with a notice rather than failing.
+      - name: Is this version on PyPI?
+        id: pypi
+        run: |
+          version=$(uv run --no-sync python -c "import bsm; print(bsm.__version__)")
+          status=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://pypi.org/pypi/bsm-pricer/${version}/json")
+          if [ "$status" = "200" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::bsm-pricer ${version} is not on PyPI yet; smoke test skipped"
+          fi
+
+      - name: Install Chromium
+        if: steps.pypi.outputs.published == 'true'
+        run: uv run --no-sync playwright install --with-deps chromium
+
+      # Serves the built site and drives a real browser through it: the runtime
+      # booting, micropip resolving the package from PyPI, and a cell producing the
+      # right number.
+      - name: Smoke test
+        if: steps.pypi.outputs.published == 'true'
+        run: uv run --no-sync pytest tests/e2e/test_document.py -v -p no:cacheprovider
+        env:
+          BSM_SITE_DIR: docs/_site
+
+  # Dependabot's uv updates may raise the lower bounds in pyproject.toml to the
+  # newest versions. For an application that is harmless; for a published library
+  # those floors are a promise to every user, so a bot does not get to move them.
+  # Only uv.lock should change in a Dependabot pull request.
+  dependabot-floors:
+    name: Dependabot leaves pyproject.toml alone
+    if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.4.0
         with:
-          name: wheel
-          path: dist/*.whl
+          fetch-depth: 0
+      - name: Check pyproject.toml is unchanged
+        run: |
+          if ! git diff --quiet "origin/${GITHUB_BASE_REF}...HEAD" -- pyproject.toml; then
+            echo "::error::this pull request changes pyproject.toml; keep only the uv.lock change"
+            git diff "origin/${GITHUB_BASE_REF}...HEAD" -- pyproject.toml
+            exit 1
+          fi
