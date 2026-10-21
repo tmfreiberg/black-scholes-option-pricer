@@ -16,7 +16,14 @@ pip install bsm-pricer
 Optional extras: `bsm-pricer[plot]` for the matplotlib helpers, `bsm-pricer[cli]` for the
 `bsm` command, or `bsm-pricer[plot,cli]` for both.
 
-To work on the package itself:
+To work on the package itself, with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --locked --extra dev       # the exact versions CI uses, from uv.lock
+uv run pre-commit install
+```
+
+or with pip, unpinned:
 
 ```bash
 python -m venv .venv --prompt bsm
@@ -163,9 +170,9 @@ mypy src tests
 pytest --cov
 ```
 
-All three gate every push in CI, with the test suite running on Python 3.11, 3.12 and
-3.13. Doctests are collected and executed, so the examples in every docstring are
-tests and cannot drift from the code.
+All three gate every push and pull request in CI, with the test suite running on
+Python 3.11 to 3.14. Doctests are collected and executed, so the examples in every
+docstring are tests and cannot drift from the code.
 
 `mypy` runs in strict mode with `possibly-undefined` enabled — an error code that is
 not part of `--strict`, and worth having, since a name read on a branch where it was
@@ -201,9 +208,9 @@ ever sees a percentage.
 ## The document
 
 `docs/index.qmd` is a Quarto document whose code cells run this package in the reader's
-browser through Pyodide. There is no server and nothing precomputed: the wheel is built
-from the commit being published, `micropip` installs it client-side, and the code that
-runs is the code the tests run.
+browser through Pyodide. There is no server and nothing precomputed: `micropip` installs
+the released wheel from PyPI client-side, so the code that runs is the code a reader
+would get from `pip install bsm-pricer`.
 
 This is what the no-SciPy decision bought. The package depends only on NumPy, so the
 wheel is `py3-none-any` and the runtime is small enough to load in a few seconds. The
@@ -216,10 +223,14 @@ happens. It pins an exact version, so the page runs a known release rather than 
 is newest.
 
 The publish workflow refuses to deploy a page that would not work. It checks the pinned
-version matches this repository, checks that version is actually on PyPI, checks the
-wheel is pure Python, and then drives a real Chromium through the rendered site to
-confirm the runtime boots and a live cell produces the textbook price. A rendered page
-can look perfect and be entirely inert.
+version matches this repository and is actually on PyPI, then drives a real Chromium
+through the rendered site to confirm the runtime boots and a live cell produces the
+textbook price; only then does it deploy. A rendered page can look perfect and be
+entirely inert. The same render runs on every pull request, with the browser test once
+the version is on PyPI, along with a check that the wheel is still pure Python.
+
+Quarto, the quarto-live extension, and through it the Pyodide version, are pinned
+together in `.github/actions/render-page/action.yml`, which both workflows use.
 
 ## The smile
 
@@ -264,7 +275,7 @@ publishing, so no API token is stored here.
 
 Bumping the version means editing three things together: `pyproject.toml`,
 `src/bsm/__init__.py`, and the pin in `docs/index.qmd`. The publish workflow fails if the
-last one is forgotten.
+last one is forgotten, and so does the CI workflow on the pull request that bumps it.
 
 ## Licence
 
