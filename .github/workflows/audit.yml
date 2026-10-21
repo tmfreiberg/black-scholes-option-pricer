@@ -1,0 +1,35 @@
+name: Audit
+
+# pip-audit over every package in uv.lock, runtime and extras alike. It runs when the
+# lock changes and once a month regardless, because advisories are published against
+# versions already locked: a lock nobody touched can still become vulnerable.
+
+on:
+  push:
+    branches: [main]
+    paths: ["uv.lock", ".github/workflows/audit.yml"]
+  pull_request:
+    paths: ["uv.lock", ".github/workflows/audit.yml"]
+  schedule:
+    - cron: "23 6 3 * *"   # 06:23 UTC on the 3rd of each month
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
+      # Exported with hashes, so pip-audit checks exactly the locked files and never
+      # resolves anything itself.
+      - name: Export the lock
+        run: |
+          uv export --frozen --all-extras --no-emit-project \
+            --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+      - name: pip-audit
+        run: |
+          uvx pip-audit==2.10.1 -r "$RUNNER_TEMP/requirements.txt" \
+            --require-hashes --disable-pip
