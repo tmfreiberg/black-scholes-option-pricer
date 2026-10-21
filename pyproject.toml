@@ -54,6 +54,16 @@ Repository = "https://github.com/tmfreiberg/black-scholes-option-pricer"
 packages = ["src/bsm"]
 
 # --------------------------------------------------------------------------------
+# deptry
+# --------------------------------------------------------------------------------
+# Not run in CI; run it with `uv run --with deptry deptry src`. The import package
+# is "bsm" while the distribution is "bsm-pricer", and the dev extra holds tools
+# rather than anything the package imports.
+[tool.deptry]
+known_first_party = ["bsm"]
+optional_dependencies_dev_groups = ["dev"]
+
+# --------------------------------------------------------------------------------
 # Ruff
 # --------------------------------------------------------------------------------
 [tool.ruff]
