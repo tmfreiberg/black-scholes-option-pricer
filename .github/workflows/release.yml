@@ -12,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra dev
 
@@ -38,7 +38,7 @@ jobs:
       - run: uv build
       - run: uvx twine check --strict dist/*
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: distribution
           path: dist/
@@ -54,7 +54,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4.3.0
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: distribution
           path: dist/

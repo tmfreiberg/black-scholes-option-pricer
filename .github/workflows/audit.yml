@@ -21,7 +21,7 @@ jobs:
   pip-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.4.0
+      - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.3.0
       # Exported with hashes, so pip-audit checks exactly the locked files and never
       # resolves anything itself.
