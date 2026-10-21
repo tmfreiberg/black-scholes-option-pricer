@@ -8,6 +8,7 @@ on:
       - "src/**"
       - "pyproject.toml"
       - ".github/workflows/pages.yml"
+      - ".github/actions/render-page/**"
   workflow_dispatch:
 
 permissions:
@@ -23,109 +24,69 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.12"
-          cache: pip
+          enable-cache: true
+      - run: uv sync --locked --extra dev
 
-      - run: pip install -e ".[dev]"
-
-      # The document installs a pinned version of bsm-pricer from PyPI at runtime, so
-      # two things have to agree that nothing here enforces on its own: the pin must
-      # match the version in this repository, and that version must actually be
-      # published. Either mismatch produces a page that renders perfectly and then
-      # fails on its first cell, which is the failure mode hardest to notice.
-      - name: Check the document pins this repository's version
-        run: |
-          version=$(python -c "import bsm; print(bsm.__version__)")
-          if ! grep -q "bsm-pricer==${version}\"" docs/index.qmd; then
-            echo "docs/index.qmd does not pin bsm-pricer==${version}" >&2
-            grep -n "micropip.install" docs/index.qmd >&2 || true
-            exit 1
-          fi
-          echo "pinned to ${version}"
-
-      # Pure Python is what makes the package installable under Pyodide at all, and it
-      # is only pure because the runtime dependencies stop at NumPy. Checked here so a
-      # future dependency with compiled code fails the build rather than the browser.
-      - name: Check the wheel is pure Python
-        run: |
-          pip install build
-          python -m build --wheel --outdir dist/
-          if ! ls dist/*-py3-none-any.whl >/dev/null 2>&1; then
-            echo "wheel is not py3-none-any; Pyodide cannot install it" >&2
-            ls -la dist/
-            exit 1
-          fi
-
-      - name: Generate static figures
-        run: python docs/make_figures.py
-
-      - uses: quarto-dev/quarto-actions/setup@v2
-        with:
-          version: 1.5.57
-
-      - name: Install quarto-live
-        run: quarto add r-wasm/quarto-live --no-prompt
-        working-directory: docs
-
-      - name: Render
-        run: quarto render
-        working-directory: docs
+      # The same render the CI workflow runs on every pull request: the version pin,
+      # the figures, and the pinned Quarto, quarto-live and Pyodide.
+      - uses: ./.github/actions/render-page
 
       # Deliberately after the render, not before. The render is the step most likely
       # to break and the one hardest to check anywhere else, so it should run even when
-      # the version is not yet published — otherwise a broken document stays hidden
+      # the version is not yet published; otherwise a broken document stays hidden
       # through the whole window between bumping a version and releasing it.
       - name: Check that version is published on PyPI
         run: |
-          version=$(python -c "import bsm; print(bsm.__version__)")
+          version=$(uv run --no-sync python -c "import bsm; print(bsm.__version__)")
           status=$(curl -s -o /dev/null -w "%{http_code}" \
             "https://pypi.org/pypi/bsm-pricer/${version}/json")
           if [ "$status" != "200" ]; then
-            echo "bsm-pricer ${version} is not on PyPI (HTTP ${status})" >&2
+            echo "::error::bsm-pricer ${version} is not on PyPI (HTTP ${status})"
             echo "publish it before deploying, or the page cannot start" >&2
             exit 1
           fi
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3.0.1
         with:
           path: docs/_site
 
+  # Runs the uploaded site, not a fresh render, so what passes here is byte for byte
+  # what gets deployed.
   smoke:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v4.4.0
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
-          python-version: "3.12"
-      - uses: actions/download-artifact@v4
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - uses: actions/download-artifact@v4.3.0
         with:
           name: github-pages
           path: artifact
       - name: Unpack the built site
         run: mkdir -p _site && tar -xf artifact/artifact.tar -C _site
-      - name: Install Playwright
-        run: |
-          pip install playwright pytest
-          playwright install --with-deps chromium
+      - name: Install Chromium
+        run: uv run --no-sync playwright install --with-deps chromium
       # Serves the built site and drives a real browser through it. The only test that
       # exercises what a reader meets: the runtime booting, micropip resolving the
       # package from PyPI, and a cell producing the right number.
-      - name: Smoke test the published page
-        run: pytest tests/e2e/test_document.py -v
+      - name: Smoke test the built page
+        run: uv run --no-sync pytest tests/e2e/test_document.py -v -p no:cacheprovider
         env:
           BSM_SITE_DIR: _site
 
+  # A page that renders but does not run is never deployed.
   deploy:
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v4.0.5
