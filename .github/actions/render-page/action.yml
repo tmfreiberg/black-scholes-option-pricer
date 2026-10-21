@@ -1,0 +1,73 @@
+name: Render the page
+description: >
+  Renders docs/ with the page's whole toolchain pinned in this one file, so the
+  check workflow and the publish workflow build the same page. Expects the project
+  environment to be synced already (uv sync --locked --extra dev).
+
+# The three pins, and why they live together:
+#
+#   Quarto       1.11.6    the renderer
+#   quarto-live  v0.2.0    the extension that turns cells into live editors
+#   Pyodide      v0.28.1   the browser runtime; quarto-live chooses it, not us
+#
+# Pyodide is not something this repository installs. Each quarto-live release loads
+# one Pyodide version from a CDN, so pinning quarto-live is what pins Pyodide. The
+# check below makes that explicit: if a quarto-live change would move the runtime,
+# the render fails here instead of the page changing silently. To move either one,
+# change the release tag and the expected Pyodide version together.
+
+runs:
+  using: composite
+  steps:
+    # The page installs a pinned version of bsm-pricer from PyPI at runtime, so the
+    # pin must match the version in this repository. A mismatch gives a page that
+    # renders perfectly and then fails on its first cell.
+    - name: Check the page pins this repository's version
+      shell: bash
+      run: |
+        version=$(uv run --no-sync python -c "import bsm; print(bsm.__version__)")
+        if ! grep -q "bsm-pricer==${version}\"" docs/index.qmd; then
+          echo "::error::docs/index.qmd does not pin bsm-pricer==${version}"
+          grep -n "micropip.install" docs/index.qmd >&2 || true
+          exit 1
+        fi
+        echo "page pins bsm-pricer==${version}"
+
+    - name: Generate static figures
+      shell: bash
+      run: uv run --no-sync python docs/make_figures.py
+
+    - uses: quarto-dev/quarto-actions/setup@v2.2.0
+      with:
+        version: "1.11.6"
+
+    - name: Install quarto-live
+      shell: bash
+      working-directory: docs
+      run: quarto add r-wasm/quarto-live@v0.2.0 --no-prompt
+
+    - name: Check the Pyodide version quarto-live loads
+      shell: bash
+      working-directory: docs
+      env:
+        EXPECTED: pyodide/v0.28.1
+      run: |
+        found=$(grep -rhoE 'pyodide/v[0-9]+\.[0-9]+\.[0-9]+' _extensions | sort -u)
+        if [ "$found" != "$EXPECTED" ]; then
+          echo "::error::quarto-live loads ${found:-no Pyodide found}, expected ${EXPECTED}"
+          exit 1
+        fi
+        echo "quarto-live loads ${found}"
+
+    # Quarto reports problems as WARN lines and still exits 0, so a page with a
+    # broken cross-reference or a missing figure would pass. Any warning fails here.
+    - name: Render, failing on any warning
+      shell: bash
+      working-directory: docs
+      run: |
+        quarto render 2>&1 | tee "$RUNNER_TEMP/render.log"
+        if grep -q "WARN" "$RUNNER_TEMP/render.log"; then
+          echo "::error::quarto render printed warnings"
+          grep -n "WARN" "$RUNNER_TEMP/render.log"
+          exit 1
+        fi

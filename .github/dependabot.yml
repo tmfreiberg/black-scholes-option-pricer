@@ -1,0 +1,27 @@
+version: 2
+
+# One pull request a month per ecosystem, every update in it, so the CI workflow
+# tests the lot together and there is one thing to review rather than a dozen.
+
+updates:
+  # uv.lock. Only the lock should change: the CI workflow fails a Dependabot pull
+  # request that also moves a lower bound in pyproject.toml.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      python:
+        patterns: ["*"]
+
+  # The workflows, plus the composite action that renders the page, which
+  # Dependabot only reads when its directory is listed.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/render-page
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
